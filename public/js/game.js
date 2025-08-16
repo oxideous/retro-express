@@ -10,7 +10,7 @@ var Key = {
 	_pressed: {},
 	shift: 16, 
 	left: 37, up: 38, right: 39, down: 40,
-	A: 65,W: 87,D: 68,S: 83,
+        A: 65,W: 87,D: 68,S: 83,space:32,
 	one: 49,two: 50, three: 51, zero: 48,
 	equal: 187, dash: 189,
 	isDown: function (keyCode) {return this._pressed[keyCode];},
@@ -84,12 +84,12 @@ function startMenu(){
 	startCamera.position.set(0,60,100);
 	startCamera.lookAt(startMenuScene.position);
 
-	////START SPHERE 
-	var sphereGeometry = new THREE.SphereGeometry(150,50,50);
-	var sphereColor = Math.floor(Math.random() * 16777215).toString(16);
-	var sphereMaterial = new THREE.MeshBasicMaterial({color:"#" + sphereColor, wireframe: true, transparent: false, opacity: .3})
-	var startSphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-	startMenuScene.add(startSphereMesh);
+        ////START SPHERE
+        var sphereGeometry = new THREE.SphereGeometry(150,50,50);
+        var sphereMaterial = new THREE.MeshBasicMaterial({color:0x00ff00, wireframe:true, transparent:false, opacity:.3});
+        var startSphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        startMenuScene.add(startSphereMesh);
+        var startHue = 0;
 	
 	////DOM SETUP - START GAME
 	var startButton = document.createElement('button');
@@ -123,32 +123,38 @@ function startMenu(){
 	}
 	rexShapeData() //GRABS SVG DATA
 	var rexExtrusion = {amount: 4, bevelEnabled: false};
-	var rexGeometry = new THREE.ExtrudeGeometry(rexShape, rexExtrusion);
-	var rexMaterial = new THREE.MeshBasicMaterial({color: 0x00FF00, wireframe: true});
-	var rexMesh = new THREE.Mesh(rexGeometry, rexMaterial);
-	//var rexMesh = new Physijs.ConvexMesh(rexGeometry, rexMaterial);
-	rexMesh.rotateX(Math.radians(90));
-	rexPivot.add(rexMesh);
-	startMenuScene.add(rexPivot);
+        var rexGeometry = new THREE.ExtrudeGeometry(rexShape, rexExtrusion);
+        var rexMaterial = new THREE.MeshPhongMaterial({color:0x000000, flatShading:true});
+        var rexMesh = new THREE.Mesh(rexGeometry, rexMaterial);
+        rexMesh.rotateX(Math.radians(90));
+        // blinking navigation lights
+        var leftLight = new THREE.PointLight(0xff0000,1,50);
+        leftLight.position.set(10,0,5);
+        rexMesh.add(leftLight);
+        var rightLight = new THREE.PointLight(0xff0000,1,50);
+        rightLight.position.set(-10,0,5);
+        rexMesh.add(rightLight);
+        rexMesh.userData.lights = [leftLight,rightLight];
+        rexPivot.add(rexMesh);
+        startMenuScene.add(rexPivot);
 	
-	var secretMode = false;
 	
-	var startMenuAnimate = function(){
-		sMA = requestAnimationFrame(startMenuAnimate);
-		rexPivot.rotateY(Math.radians(.9));
-		startSphereMesh.rotateY(Math.radians(-.1));
-		if (Key.isDown(Key.zero)) {
-			secretMode = true;
-		}
-		if (secretMode === true){
-			var newStartSphereColor = Math.floor(Math.random() * 16777215).toString(16);
-			startSphereMesh.material.color.setHex( "0x" + newStartSphereColor );
-		}
-		var gameLogoColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
-		gameLogo.style.color = gameLogoColor;
-		renderer.render(startMenuScene, startCamera);
-	};
-	startMenuAnimate();
+        var lightPulse = 0;
+        var startMenuAnimate = function(){
+                sMA = requestAnimationFrame(startMenuAnimate);
+                rexPivot.rotateY(Math.radians(.9));
+                startSphereMesh.rotateY(Math.radians(-.1));
+                startHue = (startHue + 0.5) % 360;
+                startSphereMesh.material.color.setHSL(startHue/360, 1, 0.5);
+                gameLogo.style.background = "linear-gradient(90deg, hsl("+startHue+",100%,50%), hsl("+((startHue+60)%360)+",100%,50%))";
+                gameLogo.style.webkitBackgroundClip = 'text';
+                gameLogo.style.color = 'transparent';
+                lightPulse += 0.05;
+                var blink = (Math.sin(lightPulse*5)+1)/2;
+                rexMesh.userData.lights.forEach(function(l){l.intensity = blink;});
+                renderer.render(startMenuScene, startCamera);
+        };
+        startMenuAnimate();
 }
 
 
@@ -238,14 +244,16 @@ function startGame(){
 	}
 	////CHECK FOR COLLISION
 	function checkForCollision() {
-		for (var i = 0; i < enemyPivot.children.length; i++) {
-			var rexPosition = new THREE.Box3().setFromObject(rexMesh);
-			var enemyPosition = new THREE.Box3().setFromObject(enemyPivot.children[i]);
-			if (enemyPosition.isIntersectionBox(rexPosition)) {
-				setRexAlive(false)
-			}
-		}
-	}
+                for (var i = 0; i < enemyPivot.children.length; i++) {
+                        var rexPosition = new THREE.Box3().setFromObject(rexMesh);
+                        var enemyPosition = new THREE.Box3().setFromObject(enemyPivot.children[i]);
+                        enemyPosition.expandByScalar(enemyPivotSpeed*difficulty);
+                        if (enemyPosition.intersectsBox(rexPosition)) {
+                                createExplosion(rexMesh.position.clone());
+                                setRexAlive(false)
+                        }
+                }
+        }
 	////CHECK IF ENEMIES EXIST
 	function checkForEnemies(){
 		if (typeof enemyMesh != "undefined") {
@@ -304,12 +312,44 @@ function startGame(){
 			if(cameraSwitcher === "cockpitCamera"){
 				cockpitCamera.rotation.z = Math.radians(90)
 			}
-		}////SHIFT KEYUP RESET IS IN ANIMATE FUNCTION
-	}
-	
-	////ENEMY GENERATION
-	function createEnemy() {
-		if (enemyPivot.children.length <= 99) {
+                }////SHIFT KEYUP RESET IS IN ANIMATE FUNCTION
+        }
+
+        function createElementMaterial(){
+                var canvas = document.createElement('canvas');
+                canvas.width = canvas.height = 64;
+                var ctx = canvas.getContext('2d');
+                var type = Math.floor(Math.random()*4);
+                switch(type){
+                        case 0:
+                                ctx.fillStyle = '#8B4513'; // earth
+                                ctx.fillRect(0,0,64,64);
+                                break;
+                        case 1:
+                                ctx.fillStyle = '#F0F8FF'; // wind
+                                ctx.fillRect(0,0,64,64);
+                                break;
+                        case 2:
+                                var gradW = ctx.createLinearGradient(0,0,64,64);
+                                gradW.addColorStop(0,'#0000ff');
+                                gradW.addColorStop(1,'#00ffff');
+                                ctx.fillStyle = gradW; // water
+                                ctx.fillRect(0,0,64,64);
+                                break;
+                        case 3:
+                                var gradF = ctx.createLinearGradient(0,0,64,64);
+                                gradF.addColorStop(0,'#ff0000');
+                                gradF.addColorStop(1,'#ffa500');
+                                ctx.fillStyle = gradF; // fire
+                                ctx.fillRect(0,0,64,64);
+                                break;
+                }
+                var texture = new THREE.CanvasTexture(canvas);
+                return new THREE.MeshPhongMaterial({map:texture});
+        }
+
+        ////ENEMY GENERATION
+        function createEnemy() {
 
 			if (typeof enemyMesh != "undefined") {
 				var lastEnemyPosition = enemyMesh.position.z;
@@ -318,15 +358,10 @@ function startGame(){
 				var newEnemyPosition = -5000;
 			}
 
-			var enemyColor = '#' + Math.floor(Math.random() * 16777215).toString(16);
+                        var enemyGeometry = new THREE.BoxGeometry(Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, 2, 2, 2);
+                        var enemyMaterial = createElementMaterial();
 
-			var enemyGeometry = new THREE.BoxGeometry(Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, 2, 2, 2)
-			var enemyMaterial = new THREE.MeshBasicMaterial({
-				color: enemyColor,
-				wireframe: true
-			});
-
-			enemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
+                        enemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
 			var enemyBox = new THREE.Box3().setFromObject(enemyMesh);
 			var enemyHalfX = enemyBox.max.x
 			var enemyHalfY = enemyBox.max.y
@@ -335,7 +370,6 @@ function startGame(){
 			enemyMesh.name = "enemy" + parseInt(enemyId);
 
 			////PHYSI.JS
-			enemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
 			//		enemyMesh = new Physijs.BoxMesh(enemyGeometry, enemyMaterial);
 
 			var switchNum = Math.floor(Math.random() * 21);
@@ -425,24 +459,69 @@ function startGame(){
 					enemyMesh.position.set(250, -200, newEnemyPosition)
 					break;
 			}
-			enemyPivot.add(enemyMesh)
-		}
-	}
+                        enemyPivot.add(enemyMesh)
+        }
 	////DELETE ENEMY
-	function deleteEnemy() {
-		enemyPivot.remove(enemyPivot.children[0])
-	}
+        function deleteEnemy() {
+                enemyPivot.remove(enemyPivot.children[0])
+        }
+
+        function createExplosion(position){
+                var geom = new THREE.SphereGeometry(20,8,8);
+                var mat = new THREE.MeshBasicMaterial({color:0xffaa00, transparent:true, opacity:0.8});
+                var mesh = new THREE.Mesh(geom, mat);
+                mesh.position.copy(position);
+                gameScene.add(mesh);
+                var scale = 1;
+                function explode(){
+                        scale += 0.2;
+                        mesh.scale.set(scale,scale,scale);
+                        mat.opacity -= 0.05;
+                        if(mat.opacity <= 0){
+                                gameScene.remove(mesh);
+                        } else {
+                                requestAnimationFrame(explode);
+                        }
+                }
+                explode();
+        }
+
+        function fireLaser(){
+                if(laserCooldown > 0){return;}
+                var geom = new THREE.CylinderGeometry(1,1,40,8);
+                var mat = new THREE.MeshBasicMaterial({color:0xff0000});
+                var laser = new THREE.Mesh(geom,mat);
+                laser.rotation.x = Math.PI/2;
+                laser.position.set(rexPivot.position.x, rexPivot.position.y, rexPivot.position.z+20);
+                lasers.push(laser);
+                gameScene.add(laser);
+                laserCooldown = 0.2;
+        }
 	/////////////////////////////////////////////////////////////////
 	
-	////CREATE SCENE
-	var gameScene = new THREE.Scene();//var gameScene = new Physijs.Scene();////PHYSJS VERSION
-	
-	////LIGHTS
-	gameScene.add(new THREE.AmbientLight(0xCCCCCC));
-	
-	////FOG
-	gameScene.fog = new THREE.FogExp2(0x000000, 0.0005);
-	renderer.setClearColor(gameScene.fog.color, 1);
+        ////CREATE SCENE
+        var gameScene = new THREE.Scene();//var gameScene = new Physijs.Scene();////PHYSJS VERSION
+
+        ////LIGHTS
+        gameScene.add(new THREE.AmbientLight(0xCCCCCC));
+        var mainLight = new THREE.DirectionalLight(0xffffff,1);
+        mainLight.position.set(0,1,1);
+        gameScene.add(mainLight);
+
+        ////FOG
+        gameScene.fog = new THREE.FogExp2(0x000000, 0.0005);
+        renderer.setClearColor(gameScene.fog.color, 1);
+
+        ////STARFIELD BACKGROUND
+        var starGeometry = new THREE.BufferGeometry();
+        var starVertices = [];
+        for (var i = 0; i < 500; i++) {
+                starVertices.push((Math.random()-0.5)*10000, (Math.random()-0.5)*10000, (Math.random()-0.5)*10000);
+        }
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices,3));
+        var starMaterial = new THREE.PointsMaterial({color:0xffffff});
+        var stars = new THREE.Points(starGeometry, starMaterial);
+        gameScene.add(stars);
 	
 	////GAME CAMERA (3D)
 	var gameCamera = new THREE.PerspectiveCamera(55, displayWidth / displayHeight, 0.1, 2500);
@@ -513,9 +592,12 @@ function startGame(){
 	gameScene.add(gridLineTop);
 	
 	////ENEMY PIVOT (PARENT CONTROL - USE THIS TO MOVE BLOCKS)
-	var enemyPivot = new THREE.Object3D();
-	var enemyPivotSpeed = 50;
-	var enemyId = 0;
+        var enemyPivot = new THREE.Object3D();
+        var enemyPivotSpeed = 50;
+        var enemyId = 0;
+        var lasers = [];
+        var laserCooldown = 0;
+        var destroyedBlocks = 0;
 
 	////ADD REX
 	////REX (SPACESHIP) - CENTERED ON AXIS
@@ -534,16 +616,23 @@ function startGame(){
 	}
 	rexShapeData() //GRABS SVG DATA
 	var rexExtrusion = {amount: 4, bevelEnabled: false};
-	var rexGeometry = new THREE.ExtrudeGeometry(rexShape, rexExtrusion);
-	var rexMaterial = new THREE.MeshBasicMaterial({color: 0x00FF00, wireframe: true});
-	rexMesh = new THREE.Mesh(rexGeometry, rexMaterial);
-	//var rexMesh = new Physijs.ConvexMesh(rexGeometry, rexMaterial);
-	var rexDirection = "up";
-	rexMesh.rotateX(Math.radians(90));
-	rexPivot.translateZ(100);
-	rexPivot.rotation.y = 0;
-	gameScene.add(rexPivot)
-	rexPivot.add(rexMesh);
+        var rexGeometry = new THREE.ExtrudeGeometry(rexShape, rexExtrusion);
+        var rexMaterial = new THREE.MeshPhongMaterial({color:0x000000, flatShading:true});
+        rexMesh = new THREE.Mesh(rexGeometry, rexMaterial);
+        var leftLight = new THREE.PointLight(0xff0000,1,50);
+        leftLight.position.set(10,0,5);
+        rexMesh.add(leftLight);
+        var rightLight = new THREE.PointLight(0xff0000,1,50);
+        rightLight.position.set(-10,0,5);
+        rexMesh.add(rightLight);
+        rexMesh.userData.lights = [leftLight,rightLight];
+        var rexDirection = "up";
+        var lightPulse = 0;
+        rexMesh.rotateX(Math.radians(90));
+        rexPivot.translateZ(100);
+        rexPivot.rotation.y = 0;
+        gameScene.add(rexPivot)
+        rexPivot.add(rexMesh);
 	
 	gameScene.add(enemyPivot);
 	
@@ -559,18 +648,19 @@ function startGame(){
 	var enemyCreateInterval = setInterval(createEnemy, 10)
 	//var enemyDeleteInterval = setInterval(deleteEnemy, 10)
 	
-	godMode = false;
+        godMode = false;
+        var godHue = 0;
 	
 	function aliveGameOver(boolean){
 		switch(boolean){
 			case true:
 				cameraSwitcher = "gameCamera"
-				function gameAnimate(){
-					gA = requestAnimationFrame(gameAnimate);
-					//gameScene.simulate() //start physics
-					var delta = gameClock.getDelta()
-					var time = parseInt(gameClock.getElapsedTime());
-					var newColor = Math.floor(Math.random() * 16777215).toString(16);
+                                function gameAnimate(){
+                                        gA = requestAnimationFrame(gameAnimate);
+                                        //gameScene.simulate() //start physics
+                                        var delta = gameClock.getDelta()
+                                        var time = parseInt(gameClock.getElapsedTime());
+                                        lightPulse += delta;
 					
 					////BARREL ROLL RESET
 					rexMesh.rotation.y = 0;
@@ -579,19 +669,47 @@ function startGame(){
 					}
 					
 					////WORLD TRANSLATION && DIFFICULTY    
-					checkDifficulty(time) 
-					checkForEnemies()
-					
-					if (godMode === false){
-						checkForCollision();
-						rexMesh.material.color.setHex(0x00FF00);
-					} else if (godMode === true){
-						////PSYCHEDLEIC MODE	
-						rexMesh.material.color.setHex( "0x" + newColor );
-					}
-					
-					shipControls();
-					rexWobble();
+                                        checkDifficulty(time)
+                                        checkForEnemies()
+
+                                        if(laserCooldown>0){laserCooldown-=delta;}
+                                        if(Key.isDown(Key.space)){fireLaser();}
+                                        for(var l=lasers.length-1;l>=0;l--){
+                                                lasers[l].translateZ(-1000*delta);
+                                                var laserBox=new THREE.Box3().setFromObject(lasers[l]);
+                                                var hit=false;
+                                                for(var e=enemyPivot.children.length-1;e>=0;e--){
+                                                        var enemy=enemyPivot.children[e];
+                                                        var enemyBox=new THREE.Box3().setFromObject(enemy);
+                                                        if(laserBox.intersectsBox(enemyBox)){
+                                                                createExplosion(enemy.position.clone());
+                                                                enemyPivot.remove(enemy);
+                                                                hit=true;
+                                                                scoreCounter+=1;
+                                                                destroyedBlocks+=1;
+                                                                scoreDisplay.innerHTML='SCORE: '+scoreCounter;
+                                                                break;
+                                                        }
+                                                }
+                                                if(hit || lasers[l].position.z < -5000){
+                                                        gameScene.remove(lasers[l]);
+                                                        lasers.splice(l,1);
+                                                }
+                                        }
+
+                                        var blink = (Math.sin(lightPulse*5)+1)/2;
+                                        rexMesh.userData.lights.forEach(function(l){l.intensity = blink;});
+                                        if (godMode === false){
+                                                checkForCollision();
+                                                rexMesh.material.color.setHex(0x000000);
+                                        } else if (godMode === true){
+                                                ////SMOOTH COLOR CYCLE
+                                                godHue = (godHue + 60*delta) % 360;
+                                                rexMesh.material.color.setHSL(godHue/360,1,0.5);
+                                        }
+
+                                        shipControls();
+                                        rexWobble();
 					
 		
 	
@@ -620,8 +738,9 @@ function startGame(){
 				gameAnimate();
 				break;
 			case false:
-				function gameOver(){
-					cancelAnimationFrame(gA);
+                                function gameOver(){
+                                        cancelAnimationFrame(gA);
+                                        scoreDisplay.innerHTML = 'FINAL SCORE: ' + scoreCounter + '<br>BLOCKS DESTROYED: ' + destroyedBlocks;
 					////ORBIT CAMERA (DEATH CAM)
 					var orbitCamera = new THREE.PerspectiveCamera(45, displayWidth / displayHeight, 0.1, 2500);
 					orbitCamera.position.set(300, 300, 100);

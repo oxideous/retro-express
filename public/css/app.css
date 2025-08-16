@@ -1,8 +1,7 @@
 body {
-	background: #111111;
-	background-image: url('../img/cubes.png');
-	color: #00FF00;
-	font-size: 16px;
+        background: radial-gradient(circle at 50% 50%, #050505, #000000);
+        color: #00FF00;
+        font-size: 16px;
 }
 pre {
 	font-family: "Courier New", Courier, monospace;
