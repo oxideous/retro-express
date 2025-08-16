@@ -3,6 +3,52 @@ console.log("GAME.JS")
 // DEGREE TO RADIAN
 Math.radians = function(degrees) {return degrees * Math.PI / 180;};
 
+// GLOBAL GAME VARIABLES
+var godHue = 0;
+var laserHits = 0;
+var lastShot = 0;
+
+function createTexture(color1, color2) {
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        var ctx = canvas.getContext('2d');
+        var gradient = ctx.createLinearGradient(0,0,64,64);
+        gradient.addColorStop(0, color1);
+        gradient.addColorStop(1, color2);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0,0,64,64);
+        return new THREE.CanvasTexture(canvas);
+}
+
+function getElementMaterial(){
+        var choice = Math.floor(Math.random()*4);
+        switch(choice){
+                case 0:
+                        return new THREE.MeshLambertMaterial({map:createTexture('#8B4513','#CD853F')}); // earth
+                case 1:
+                        return new THREE.MeshLambertMaterial({map:createTexture('#F0F8FF','#B0E0E6')}); // wind
+                case 2:
+                        return new THREE.MeshLambertMaterial({map:createTexture('#1E90FF','#00BFFF')}); // water
+                default:
+                        return new THREE.MeshLambertMaterial({map:createTexture('#FF4500','#FFD700')}); // fire
+        }
+}
+
+function createStarTexture(){
+        var canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 512;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0,0,512,512);
+        for(var i=0;i<1000;i++){
+                var x = Math.random()*512;
+                var y = Math.random()*512;
+                var s = Math.random()*2;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(x,y,s,s);
+        }
+        return new THREE.CanvasTexture(canvas);
+}
 ////DEFINE KEYPRESS EVENT LISTENERS (X & Y MOTION AND CAMERA CHOOSER)
 window.addEventListener('keyup', function(event) { event.preventDefault(); Key.onKeyup(event); }, false);
 window.addEventListener('keydown', function(event) { event.preventDefault(); Key.onKeydown(event); }, false);
@@ -10,9 +56,10 @@ var Key = {
 	_pressed: {},
 	shift: 16, 
 	left: 37, up: 38, right: 39, down: 40,
-	A: 65,W: 87,D: 68,S: 83,
-	one: 49,two: 50, three: 51, zero: 48,
-	equal: 187, dash: 189,
+        A: 65,W: 87,D: 68,S: 83,
+        one: 49,two: 50, three: 51, zero: 48,
+        space: 32,
+        equal: 187, dash: 189,
 	isDown: function (keyCode) {return this._pressed[keyCode];},
 	onKeydown: function (event) {this._pressed[event.keyCode] = true;},
 //	onKeyup: function (event) {if (event.keyCode === 16){rexMesh.rotation.y = 0;} delete this._pressed[event.keyCode];}
@@ -84,12 +131,11 @@ function startMenu(){
 	startCamera.position.set(0,60,100);
 	startCamera.lookAt(startMenuScene.position);
 
-	////START SPHERE 
-	var sphereGeometry = new THREE.SphereGeometry(150,50,50);
-	var sphereColor = Math.floor(Math.random() * 16777215).toString(16);
-	var sphereMaterial = new THREE.MeshBasicMaterial({color:"#" + sphereColor, wireframe: true, transparent: false, opacity: .3})
-	var startSphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-	startMenuScene.add(startSphereMesh);
+        ////START SPHERE
+        var sphereGeometry = new THREE.SphereGeometry(150,50,50);
+        var sphereMaterial = new THREE.MeshBasicMaterial({color:0xffffff, wireframe: true, transparent: false, opacity: .3})
+        var startSphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        startMenuScene.add(startSphereMesh);
 	
 	////DOM SETUP - START GAME
 	var startButton = document.createElement('button');
@@ -131,23 +177,17 @@ function startMenu(){
 	rexPivot.add(rexMesh);
 	startMenuScene.add(rexPivot);
 	
-	var secretMode = false;
-	
-	var startMenuAnimate = function(){
-		sMA = requestAnimationFrame(startMenuAnimate);
-		rexPivot.rotateY(Math.radians(.9));
-		startSphereMesh.rotateY(Math.radians(-.1));
-		if (Key.isDown(Key.zero)) {
-			secretMode = true;
-		}
-		if (secretMode === true){
-			var newStartSphereColor = Math.floor(Math.random() * 16777215).toString(16);
-			startSphereMesh.material.color.setHex( "0x" + newStartSphereColor );
-		}
-		var gameLogoColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
-		gameLogo.style.color = gameLogoColor;
-		renderer.render(startMenuScene, startCamera);
-	};
+        var startHue = 0;
+
+        var startMenuAnimate = function(){
+                sMA = requestAnimationFrame(startMenuAnimate);
+                rexPivot.rotateY(Math.radians(.9));
+                startSphereMesh.rotateY(Math.radians(-.1));
+                startHue = (startHue + 0.5) % 360;
+                startSphereMesh.material.color.setHSL(startHue/360,0.5,0.5);
+                gameLogo.style.color = 'hsl(' + startHue + ',100%,70%)';
+                renderer.render(startMenuScene, startCamera);
+        };
 	startMenuAnimate();
 }
 
@@ -208,56 +248,81 @@ function startGame(){
 	}
 		
 	////CHECK DIFFICULTY
-	function checkDifficulty(time) {
-		////WORLD TRANSLATION && DIFFICULTY 
-		////***** LEVEL 11 *****
-		if(time >= 100.0){difficulty = 2;}
-		////***** LEVEL 10 *****
-		if(time >= 90.0 && time < 100.0){difficulty = 1;}
-		////***** LEVEL 9 *****
-		if(time >= 80.0 && time < 90.0){difficulty = .999;}
-		////***** LEVEL 8 *****
-		if(time >= 70.0 && time < 80.0){difficulty = .888;}
-		////***** LEVEL 7 *****
-		if(time >= 60.0 && time < 70.0){difficulty = .777;}
-		////***** LEVEL 6 *****
-		if(time >= 50.0 && time < 60.0){difficulty = .666;}
-		////***** LEVEL 5 *****
-		if(time >= 40.0 && time < 50.00 ){difficulty = .555;}
-		////***** LEVEL 4 *****
-		if(time >= 30.0 && time < 40.0){difficulty = .444;}
-		////***** LEVEL 3 *****
-		if(time >= 20.0 && time < 30.0){difficulty = .333;}
-		////***** LEVEL 2 *****
-		if (time >= 10.0 && time < 20.0){difficulty = .222;}
-		////***** LEVEL 1 *****
-		if(time >= 0.0 && time < 10.0){difficulty = .111;}
-		gridLine.translateZ(gridLineSpeed*difficulty)
-		cubeMesh.translateZ(cubeMeshSpeed*difficulty)
-		checkForEnemies(difficulty)
-	}
-	////CHECK FOR COLLISION
+        function checkDifficulty(time, delta) {
+                ////WORLD TRANSLATION && DIFFICULTY
+                ////***** LEVEL 11 *****
+                if(time >= 100.0){difficulty = 2;}
+                ////***** LEVEL 10 *****
+                if(time >= 90.0 && time < 100.0){difficulty = 1;}
+                ////***** LEVEL 9 *****
+                if(time >= 80.0 && time < 90.0){difficulty = .999;}
+                ////***** LEVEL 8 *****
+                if(time >= 70.0 && time < 80.0){difficulty = .888;}
+                ////***** LEVEL 7 *****
+                if(time >= 60.0 && time < 70.0){difficulty = .777;}
+                ////***** LEVEL 6 *****
+                if(time >= 50.0 && time < 60.0){difficulty = .666;}
+                ////***** LEVEL 5 *****
+                if(time >= 40.0 && time < 50.00 ){difficulty = .555;}
+                ////***** LEVEL 4 *****
+                if(time >= 30.0 && time < 40.0){difficulty = .444;}
+                ////***** LEVEL 3 *****
+                if(time >= 20.0 && time < 30.0){difficulty = .333;}
+                ////***** LEVEL 2 *****
+                if (time >= 10.0 && time < 20.0){difficulty = .222;}
+                ////***** LEVEL 1 *****
+                if(time >= 0.0 && time < 10.0){difficulty = .111;}
+                gridLine.translateZ(gridLineSpeed*difficulty*delta)
+                gridLineTop.translateZ(gridLineSpeed*difficulty*delta)
+                cubeMesh.translateZ(cubeMeshSpeed*difficulty*delta)
+                if(gridLine.position.z < -150000){
+                        gridLine.position.z += 300000;
+                        gridLineTop.position.z += 300000;
+                        cubeMesh.position.z += 300000;
+                }
+                checkForEnemies(delta)
+        }
+
+        function createExplosion(position){
+                var geom = new THREE.SphereGeometry(10,8,8);
+                var mat = new THREE.MeshBasicMaterial({color:0xffaa00, transparent:true});
+                var mesh = new THREE.Mesh(geom, mat);
+                mesh.position.copy(position);
+                gameScene.add(mesh);
+                var scale = 1;
+                var explode = setInterval(function(){
+                        scale += 0.2;
+                        mesh.scale.set(scale,scale,scale);
+                        mat.opacity -= 0.05;
+                        if(mat.opacity <=0){
+                                clearInterval(explode);
+                                gameScene.remove(mesh);
+                        }
+                },16);
+        }
+        ////CHECK FOR COLLISION
 	function checkForCollision() {
 		for (var i = 0; i < enemyPivot.children.length; i++) {
 			var rexPosition = new THREE.Box3().setFromObject(rexMesh);
 			var enemyPosition = new THREE.Box3().setFromObject(enemyPivot.children[i]);
-			if (enemyPosition.isIntersectionBox(rexPosition)) {
-				setRexAlive(false)
-			}
+                        if (enemyPosition.isIntersectionBox(rexPosition)) {
+                                createExplosion(rexMesh.position.clone());
+                                setRexAlive(false)
+                        }
 		}
 	}
 	////CHECK IF ENEMIES EXIST
-	function checkForEnemies(){
-		if (typeof enemyMesh != "undefined") {
-			enemyPivot.translateZ(enemyPivotSpeed*difficulty)
+        function checkForEnemies(delta){
+                if (typeof enemyMesh != "undefined") {
+                        enemyPivot.translateZ(enemyPivotSpeed*difficulty*delta)
 
 //			if (enemyPivot.children[0].matrixWorld.elements[14] > 200 && enemyPivot.children[0].material.opacity > 0) {
 //				enemyPivot.children[0].material.opacity -= .1;
 //			}
 			if (enemyPivot.children[0].matrixWorld.elements[14] > 1200) {
-				scoreCounter += 1;
-				scoreDisplay.innerHTML = 'SCORE: ' + scoreCounter;
-				deleteEnemy()
+                                scoreCounter += 1;
+                                scoreDisplay.innerHTML = 'SCORE: ' + scoreCounter + ' HITS: ' + laserHits;
+                                deleteEnemy()
 			}
 		}
 	}
@@ -299,15 +364,39 @@ function startGame(){
 			}
 		}
 		////SHIFT KEY (VERTICAL MODE)
-		if (Key.isDown(Key.shift)){
-			rexMesh.rotation.y = Math.radians(90);
-			if(cameraSwitcher === "cockpitCamera"){
-				cockpitCamera.rotation.z = Math.radians(90)
-			}
-		}////SHIFT KEYUP RESET IS IN ANIMATE FUNCTION
-	}
-	
-	////ENEMY GENERATION
+                if (Key.isDown(Key.shift)){
+                        rexMesh.rotation.y = Math.radians(90);
+                        if(cameraSwitcher === "cockpitCamera"){
+                                cockpitCamera.rotation.z = Math.radians(90)
+                        }
+                }////SHIFT KEYUP RESET IS IN ANIMATE FUNCTION
+        }
+
+        function shootLaser(){
+                var now = gameClock.getElapsedTime();
+                if(now - lastShot < 0.3){return;}
+                lastShot = now;
+                var origin = rexMesh.getWorldPosition(new THREE.Vector3());
+                var direction = new THREE.Vector3(0,0,-1).applyQuaternion(rexMesh.quaternion);
+                var raycaster = new THREE.Raycaster(origin, direction);
+                var intersects = raycaster.intersectObjects(enemyPivot.children);
+                var beamGeometry = new THREE.CylinderGeometry(1,1,500,8);
+                var beamMaterial = new THREE.MeshBasicMaterial({color:0xff0000});
+                var beam = new THREE.Mesh(beamGeometry, beamMaterial);
+                beam.rotation.x = Math.PI/2;
+                beam.position.copy(origin.clone().add(direction.clone().multiplyScalar(-250)));
+                gameScene.add(beam);
+                setTimeout(function(){gameScene.remove(beam);},100);
+                if(intersects.length>0){
+                        var hit = intersects[0];
+                        createExplosion(hit.point);
+                        enemyPivot.remove(hit.object);
+                        laserHits++;
+                        scoreDisplay.innerHTML = 'SCORE: ' + scoreCounter + ' HITS: ' + laserHits;
+                }
+        }
+
+        ////ENEMY GENERATION
 	function createEnemy() {
 		if (enemyPivot.children.length <= 99) {
 
@@ -318,13 +407,8 @@ function startGame(){
 				var newEnemyPosition = -5000;
 			}
 
-			var enemyColor = '#' + Math.floor(Math.random() * 16777215).toString(16);
-
-			var enemyGeometry = new THREE.BoxGeometry(Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, 2, 2, 2)
-			var enemyMaterial = new THREE.MeshBasicMaterial({
-				color: enemyColor,
-				wireframe: true
-			});
+                        var enemyGeometry = new THREE.BoxGeometry(Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, Math.floor(Math.random() * 50) + 50, 2, 2, 2)
+                        var enemyMaterial = getElementMaterial();
 
 			enemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial);
 			var enemyBox = new THREE.Box3().setFromObject(enemyMesh);
@@ -434,11 +518,21 @@ function startGame(){
 	}
 	/////////////////////////////////////////////////////////////////
 	
-	////CREATE SCENE
-	var gameScene = new THREE.Scene();//var gameScene = new Physijs.Scene();////PHYSJS VERSION
-	
-	////LIGHTS
-	gameScene.add(new THREE.AmbientLight(0xCCCCCC));
+        ////CREATE SCENE
+        var gameScene = new THREE.Scene();//var gameScene = new Physijs.Scene();////PHYSJS VERSION
+
+        ////LIGHTS
+        gameScene.add(new THREE.AmbientLight(0x222222));
+        var directionalLight = new THREE.DirectionalLight(0xffffff,1);
+        directionalLight.position.set(1,1,1);
+        gameScene.add(directionalLight);
+
+        ////SPACE BACKGROUND
+        var starTexture = createStarTexture();
+        var spaceGeometry = new THREE.SphereGeometry(4000,32,32);
+        var spaceMaterial = new THREE.MeshBasicMaterial({map:starTexture, side:THREE.BackSide});
+        var spaceMesh = new THREE.Mesh(spaceGeometry, spaceMaterial);
+        gameScene.add(spaceMesh);
 	
 	////FOG
 	gameScene.fog = new THREE.FogExp2(0x000000, 0.0005);
@@ -463,11 +557,13 @@ function startGame(){
 		//Physijs.scripts.ammo = '/physijs/examples/js/ammo.js';
 	
 	////DOM SETUP - SCORE COUNTER
-	var scoreCounter = 0;
-	var scoreDisplay = document.createElement('div');
-	scoreDisplay.id = 'score-display'
-	scoreDisplay.innerHTML = 'SCORE: ' + scoreCounter;
-	display.appendChild(scoreDisplay);
+        var scoreCounter = 0;
+        laserHits = 0;
+        lastShot = 0;
+        var scoreDisplay = document.createElement('div');
+        scoreDisplay.id = 'score-display'
+        scoreDisplay.innerHTML = 'SCORE: ' + scoreCounter + ' HITS: ' + laserHits;
+        display.appendChild(scoreDisplay);
 	
 	////DOM SETUP - RESET GAME
 	var resetButton = document.createElement('button');
@@ -501,8 +597,8 @@ function startGame(){
 	gridLineTop.position.y = 500;
 
 	////CUBE (TUNNEL)
-	var cubeGeometry = new THREE.BoxGeometry(4000, 1100, 300000, 10, 10, 1000);
-	var cubeMaterial = new THREE.MeshBasicMaterial({color: 0x666666, wireframe: true});
+        var cubeGeometry = new THREE.BoxGeometry(4000, 1100, 300000, 10, 10, 1000);
+        var cubeMaterial = new THREE.MeshLambertMaterial({color: 0x222222, wireframe: false});
 	var cubeMesh = new THREE.Mesh(cubeGeometry, cubeMaterial);
 	var cubeMeshSpeed = 32;
 	cubeMesh.material.side = THREE.DoubleSide;
@@ -533,17 +629,24 @@ function startGame(){
 		rexShape.lineTo(-9.3, -17.7);
 	}
 	rexShapeData() //GRABS SVG DATA
-	var rexExtrusion = {amount: 4, bevelEnabled: false};
-	var rexGeometry = new THREE.ExtrudeGeometry(rexShape, rexExtrusion);
-	var rexMaterial = new THREE.MeshBasicMaterial({color: 0x00FF00, wireframe: true});
-	rexMesh = new THREE.Mesh(rexGeometry, rexMaterial);
+        var rexExtrusion = {amount: 4, bevelEnabled: false};
+        var rexGeometry = new THREE.ExtrudeGeometry(rexShape, rexExtrusion);
+        var rexMaterial = new THREE.MeshPhongMaterial({color: 0x000000, specular:0x000000, shininess:5});
+        rexMesh = new THREE.Mesh(rexGeometry, rexMaterial);
 	//var rexMesh = new Physijs.ConvexMesh(rexGeometry, rexMaterial);
 	var rexDirection = "up";
 	rexMesh.rotateX(Math.radians(90));
 	rexPivot.translateZ(100);
 	rexPivot.rotation.y = 0;
 	gameScene.add(rexPivot)
-	rexPivot.add(rexMesh);
+        rexPivot.add(rexMesh);
+        var leftLight = new THREE.PointLight(0xff0000,2,50);
+        leftLight.position.set(-10,0,0);
+        var rightLight = new THREE.PointLight(0xff0000,2,50);
+        rightLight.position.set(10,0,0);
+        rexMesh.add(leftLight);
+        rexMesh.add(rightLight);
+        setInterval(function(){leftLight.visible=!leftLight.visible; rightLight.visible=!rightLight.visible;},500);
 	
 	gameScene.add(enemyPivot);
 	
@@ -570,7 +673,6 @@ function startGame(){
 					//gameScene.simulate() //start physics
 					var delta = gameClock.getDelta()
 					var time = parseInt(gameClock.getElapsedTime());
-					var newColor = Math.floor(Math.random() * 16777215).toString(16);
 					
 					////BARREL ROLL RESET
 					rexMesh.rotation.y = 0;
@@ -578,24 +680,24 @@ function startGame(){
 						cockpitCamera.rotation.z = 0
 					}
 					
-					////WORLD TRANSLATION && DIFFICULTY    
-					checkDifficulty(time) 
-					checkForEnemies()
-					
-					if (godMode === false){
-						checkForCollision();
-						rexMesh.material.color.setHex(0x00FF00);
-					} else if (godMode === true){
-						////PSYCHEDLEIC MODE	
-						rexMesh.material.color.setHex( "0x" + newColor );
-					}
-					
-					shipControls();
-					rexWobble();
-					
-		
-	
-					
+                                        ////WORLD TRANSLATION && DIFFICULTY
+                                        checkDifficulty(time, delta)
+
+                                        if (godMode === false){
+                                                checkForCollision();
+                                                rexMesh.material.color.setHex(0x00FF00);
+                                        } else if (godMode === true){
+                                                ////SMOOTH COLOR MODE
+                                                godHue = (godHue + 1) % 360;
+                                                rexMesh.material.color.setHSL(godHue/360,1,0.5);
+                                        }
+
+                                        shipControls();
+                                        rexWobble();
+                                        if(Key.isDown(Key.space)){
+                                                shootLaser();
+                                        }
+
 					if (Key.isDown(Key.one)) {
 						cameraSwitcher = "gameCamera"
 					} else if (Key.isDown(Key.two)) {
@@ -635,10 +737,11 @@ function startGame(){
 					orbitControls.maxDistance = 1000;
 					orbitControls.enableZoom = false;
 
-					////ADD RESET BUTTON & ORBIT MESSAGE
-					display.appendChild(orbitMessage);
-					display.appendChild(resetButton);
-					resetButton.addEventListener('click',function(){killGame();})
+                                        ////ADD RESET BUTTON & ORBIT MESSAGE
+                                        scoreDisplay.innerHTML = 'FINAL SCORE: ' + scoreCounter + ' HITS: ' + laserHits;
+                                        display.appendChild(orbitMessage);
+                                        display.appendChild(resetButton);
+                                        resetButton.addEventListener('click',function(){killGame();})
 
 					///ORBIT CAMERA DEATH
 					rexPivot.add(orbitCamera)
